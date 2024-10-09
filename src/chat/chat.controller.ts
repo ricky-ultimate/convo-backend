@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query } from '@nestjs/common';
 import { ChatService } from './chat.service';
 
 @Controller('chat')
@@ -20,7 +20,7 @@ export class ChatController {
   }
 
   @Get('messages')
-  getMessages(@Body('chatRoomName') chatRoomName: string) {
+  getMessages(@Query('chatRoomName') chatRoomName: string) {
     return this.chatService.getMessages(chatRoomName);
   }
 }
