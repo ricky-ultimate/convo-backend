@@ -10,6 +10,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {}
 
+  // Validate user credentials (Login logic)
   async validateUser(email: string, password: string): Promise<any> {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (user && await bcrypt.compare(password, user.password)) {
@@ -19,6 +20,7 @@ export class AuthService {
     return null;
   }
 
+  // Login and return JWT
   async login(user: any) {
     const payload = { username: user.username, sub: user.id };
     return {
@@ -26,6 +28,7 @@ export class AuthService {
     };
   }
 
+  // Register user and return JWT
   async register(email: string, username: string, password: string) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await this.prisma.user.create({
@@ -35,6 +38,8 @@ export class AuthService {
         password: hashedPassword,
       },
     });
-    return user;
+
+    // After successful registration, generate and return the JWT token
+    return this.login(user);
   }
 }
