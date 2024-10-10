@@ -34,12 +34,22 @@ export class ChatService {
     });
   }
 
-
   async getMessages(chatRoomName: string) {
     const chatRoom = await this.prisma.chatRoom.findUnique({ where: { name: chatRoomName } });
     return this.prisma.message.findMany({
       where: { chatRoomId: chatRoom.id },
       include: { user: true },
     });
+  }
+
+  // Method to check if the user is a member of the room
+  async isUserInRoom(roomId: string, username: string): Promise<boolean> {
+    const membership = await this.prisma.chatRoomMembership.findFirst({
+      where: {
+        chatRoom: { name: roomId },
+        user: { username },
+      },
+    });
+    return !!membership; // Return true if membership exists
   }
 }
