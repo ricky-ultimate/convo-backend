@@ -100,7 +100,7 @@ import {
 
       if (!roomId || !username) {
         this.logger.error(`Room ID or Username is missing for socket: ${socket.id}`);
-        socket.emit('error', 'Room ID or Username is missing.');
+        await socket.emit('error', 'Room ID or Username is missing.');
         return;
       }
 
@@ -108,15 +108,16 @@ import {
         const isMember = await this.chatService.isUserInRoom(roomId, username);
         if (!isMember) {
           this.logger.error(`User ${username} is not a member of room ${roomId}`);
-          socket.emit('error', 'You are not a member of this room.');
+          await socket.emit('error', 'You are not a member of this room.');
           return;
         }
 
         // Properly consume rate limit
         await this.rateLimiter.consume(socket.id);
       } catch (rateLimiterRes) {
-        socket.emit('error', 'Rate limit exceeded. Please slow down.');
-        return;
+        await socket.emit('error', 'Rate limit exceeded. Please slow down.');
+        this.logger.error('Rate Limit exceeded, please slow down');
+        throw new Error('Rate limit exceeded');  // Propagate the error correctly
       }
 
       this.logger.log(`Message from ${username} in room ${roomId}: ${content}`);
@@ -126,10 +127,11 @@ import {
 
       if (!message) {
         this.logger.error(`Failed to save message from ${username} in room ${roomId}`);
-        socket.emit('error', 'Failed to save message.');
+        await socket.emit('error', 'Failed to save message.');
         return;
       }
 
       this.server.to(roomId).emit('message', { ...message, user: { username } });
     }
+
   }
