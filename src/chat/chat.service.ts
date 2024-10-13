@@ -75,7 +75,7 @@ export class ChatService {
 
     // Check cache first
     const cachedMessages = await this.getCachedMessages(chatRoom.id.toString());
-    if (cachedMessages) {
+    if (cachedMessages && cachedMessages.length > 0) {
       this.logger.log(`Returning cached messages for room: ${chatRoom.id}`);
       return cachedMessages; // Return cached messages if available
     }
@@ -86,8 +86,10 @@ export class ChatService {
       include: { user: true },
     });
 
+    const validMessages = messages.filter(msg => msg.user);
+
     // Cache fetched messages for future requests
-    await this.cacheMessages(chatRoom.id.toString(), messages);
+    await this.cacheMessages(chatRoom.id.toString(), validMessages);
     this.logger.log(`Fetched messages from DB and cached them for room: ${chatRoom.id}`);
 
     return messages;
