@@ -9,8 +9,10 @@ import {
   import { Server, Socket } from 'socket.io';
   import { ChatService } from './chat.service';
   import { Logger } from '@nestjs/common';
-  import { RateLimiterMemory } from 'rate-limiter-flexible';
+  import { RateLimiterRedis } from 'rate-limiter-flexible';
   import { JwtService } from '@nestjs/jwt';
+  import { ConfigService } from '@nestjs/config';
+  import { Redis } from 'ioredis';
 
   @WebSocketGateway({ path: '/ws', cors: { origin: '*' } })
   export class ChatGateway
@@ -20,25 +22,34 @@ import {
     server: Server;
 
     private logger: Logger = new Logger('ChatGateway');
-
-    // Rate limiter to avoid message spamming
-    private rateLimiter = new RateLimiterMemory({
-      points: 5, // 5 messages
-      duration: 10, // per 10 seconds
-    });
+    private rateLimiter: RateLimiterRedis;
 
     constructor(
       private readonly chatService: ChatService,
       private readonly jwtService: JwtService,
-    ) {}
+      private readonly configService: ConfigService, // Fixed typo here
+    ) {
+      // Initialize Redis client for rate limiting
+      const redisClient = new Redis(this.configService.get<string>('REDIS_URL'));
+
+        // Read rate limit settings from env
+      const rateLimitPoints = this.configService.get<number>('RATE_LIMIT_POINTS', 5);
+      const rateLimitDuration = this.configService.get<number>('RATE_LIMIT_DURATION', 10);
+
+      // Proper instantiation of Redis-based rate limiter
+      this.rateLimiter = new RateLimiterRedis({
+        storeClient: redisClient,
+        points: rateLimitPoints, // 5 messages
+        duration: rateLimitDuration, // per 10 seconds
+      });
+    }
 
     afterInit(server: Server) {
       this.logger.log('WebSocket server initialized');
     }
 
-    // Handle WebSocket connection and validate JWT token
     async handleConnection(socket: Socket) {
-      const token = socket.handshake.headers.authorization?.split(' ')[1]; // Extract Bearer token
+      const token = socket.handshake.headers.authorization?.split(' ')[1];
       if (!token) {
         this.logger.error(`No token provided. Disconnecting socket: ${socket.id}`);
         socket.disconnect();
@@ -46,35 +57,30 @@ import {
       }
 
       try {
-        // Validate JWT token
         const decoded = this.jwtService.verify(token);
-        socket.data.user = decoded; // Attach decoded user info to socket
+        socket.data.user = decoded;
         this.logger.log(`Client connected: ${socket.id} with user ${decoded.username}`);
       } catch (err) {
         this.logger.error(`Invalid token for socket: ${socket.id}`);
-        socket.disconnect(); // Disconnect the client if the token is invalid
+        socket.disconnect();
       }
     }
 
-    // Handle WebSocket disconnection
     async handleDisconnect(socket: Socket) {
       this.logger.log(`Client disconnected: ${socket.id}`);
     }
 
-    // Handle users joining a room
     @SubscribeMessage('joinRoom')
     async handleJoinRoom(socket: Socket, data: { roomId: string }) {
       const { roomId } = data;
       const username = socket.data.user.username;
 
-      // Ensure roomId and username are provided
       if (!roomId || !username) {
         this.logger.error(`Room ID or Username is missing for socket: ${socket.id}`);
         socket.emit('error', 'Room ID or Username is missing.');
         return;
       }
 
-      // Check if the user is a member of the room before allowing them to join
       const isMember = await this.chatService.isUserInRoom(roomId, username);
       if (!isMember) {
         this.logger.error(`User ${username} is not a member of room ${roomId}`);
@@ -87,16 +93,11 @@ import {
       this.logger.log(`User ${username} joined room ${roomId}`);
     }
 
-    // Handle message sending and validation
     @SubscribeMessage('message')
-    async handleMessage(
-      socket: Socket,
-      data: { roomId: string; content: string },
-    ) {
+    async handleMessage(socket: Socket, data: { roomId: string; content: string }) {
       const { roomId, content } = data;
       const username = socket.data.user.username;
 
-      // Ensure roomId and username are provided
       if (!roomId || !username) {
         this.logger.error(`Room ID or Username is missing for socket: ${socket.id}`);
         socket.emit('error', 'Room ID or Username is missing.');
@@ -104,7 +105,6 @@ import {
       }
 
       try {
-        // Validate if the user is a member of the room
         const isMember = await this.chatService.isUserInRoom(roomId, username);
         if (!isMember) {
           this.logger.error(`User ${username} is not a member of room ${roomId}`);
@@ -112,7 +112,7 @@ import {
           return;
         }
 
-        // Rate limit the messages to avoid spamming
+        // Properly consume rate limit
         await this.rateLimiter.consume(socket.id);
       } catch (rateLimiterRes) {
         socket.emit('error', 'Rate limit exceeded. Please slow down.');
@@ -121,10 +121,7 @@ import {
 
       this.logger.log(`Message from ${username} in room ${roomId}: ${content}`);
 
-      // Sanitize and save message to the database
-      const sanitizedContent = content
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+      const sanitizedContent = content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const message = await this.chatService.addMessage(roomId, sanitizedContent, username);
 
       if (!message) {
@@ -133,7 +130,6 @@ import {
         return;
       }
 
-      // Emit the message to the room
       this.server.to(roomId).emit('message', { ...message, user: { username } });
     }
   }
