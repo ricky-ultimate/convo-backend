@@ -23,23 +23,33 @@ export class ChatService {
     });
   }
 
-  // Cache recent messages in Redis
+  // Cache recent messages in Redis with fallback to continue without Redis
   async cacheMessages(roomId: string, messages: any[]) {
     const key = `chat:room:${roomId}:messages`; // Redis key for storing messages
-    await this.redisClient.set(key, JSON.stringify(messages), 'EX', 60 * 10); // Cache for 10 minutes
-    this.logger.log(`Cached messages for room: ${roomId}`); // Log caching
+    try {
+      await this.redisClient.set(key, JSON.stringify(messages), 'EX', 60 * 10); // Cache for 10 minutes
+      this.logger.log(`Cached messages for room: ${roomId}`);
+    } catch (error) {
+      this.logger.error(`Failed to cache messages in Redis for room ${roomId}: ${error.message}`);
+    }
   }
 
-  // Fetch cached messages from Redis
+  // Fetch cached messages from Redis with fallback to DB
   async getCachedMessages(roomId: string): Promise<any[]> {
     const key = `chat:room:${roomId}:messages`;
-    const cachedMessages = await this.redisClient.get(key);
 
-    if (cachedMessages) {
-      this.logger.log(`Cache hit for room: ${roomId}`); // Log cache hit
-      return JSON.parse(cachedMessages);
-    } else {
-      this.logger.warn(`Cache miss for room: ${roomId}`); // Log cache miss
+    try {
+      const cachedMessages = await this.redisClient.get(key);
+      if (cachedMessages) {
+        this.logger.log(`Cache hit for room: ${roomId}`);
+        return JSON.parse(cachedMessages);
+      } else {
+        this.logger.warn(`Cache miss for room: ${roomId}`);
+        return null;
+      }
+    } catch (error) {
+      // Log Redis failure and fall back to fetching from DB
+      this.logger.error(`Failed to fetch messages from Redis for room ${roomId}: ${error.message}`);
       return null;
     }
   }
@@ -69,11 +79,11 @@ export class ChatService {
     return message;
   }
 
-  // Fetch messages from DB and cache them
+  // Fetch messages from DB with fallback if Redis is down
   async getMessages(chatRoomName: string) {
     const chatRoom = await this.prisma.chatRoom.findUnique({ where: { name: chatRoomName } });
 
-    // Check cache first
+    // Check cache first, fall back to DB if Redis fails
     const cachedMessages = await this.getCachedMessages(chatRoom.id.toString());
     if (cachedMessages && cachedMessages.length > 0) {
       this.logger.log(`Returning cached messages for room: ${chatRoom.id}`);
@@ -86,13 +96,12 @@ export class ChatService {
       include: { user: true },
     });
 
-    const validMessages = messages.filter(msg => msg.user);
+    const validMessages = messages.filter((msg) => msg.user);
 
     // Cache fetched messages for future requests
     await this.cacheMessages(chatRoom.id.toString(), validMessages);
-    this.logger.log(`Fetched messages from DB and cached them for room: ${chatRoom.id}`);
 
-    return messages;
+    return validMessages;
   }
 
   // Check if the user is in the room
