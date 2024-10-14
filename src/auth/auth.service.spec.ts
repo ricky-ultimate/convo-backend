@@ -29,7 +29,7 @@ describe('AuthService', () => {
   });
 
   it('should store session in Redis upon login', async () => {
-    const mockUser = { id: 1, username: 'tes1', email: 'test1@test.com' };
+    const mockUser = { id: 1, username: 'testuser', email: 'test@test.com' };
     const token = 'mock-token';
 
     jest.spyOn(authService['jwtService'], 'sign').mockReturnValue(token);
@@ -38,6 +38,19 @@ describe('AuthService', () => {
     // Check that Redis stored the token
     const storedToken = await redisClient.get(`user:session:${mockUser.id}`);
     expect(storedToken).toBe(token);
+    expect(result.access_token).toBe(token);
+  });
+
+  it('should fallback to proceed without Redis if Redis fails during login', async () => {
+    const mockUser = { id: 1, username: 'testuser', email: 'test@test.com' };
+    const token = 'mock-token';
+
+    jest.spyOn(authService['jwtService'], 'sign').mockReturnValue(token);
+    jest.spyOn(redisClient, 'set').mockRejectedValue(new Error('Redis unavailable'));
+
+    const result = await authService.login(mockUser);
+
+    // Ensure the process continues even if Redis fails
     expect(result.access_token).toBe(token);
   });
 
@@ -51,6 +64,18 @@ describe('AuthService', () => {
     expect(sessionValid).toBe(true);
   });
 
+  it('should fallback to validate session as true if Redis fails', async () => {
+    const mockUserId = 1;
+    const mockToken = 'mock-token';
+
+    jest.spyOn(redisClient, 'get').mockRejectedValue(new Error('Redis unavailable'));
+
+    const sessionValid = await authService.isSessionValid(mockUserId, mockToken);
+
+    // Should return true if Redis is down
+    expect(sessionValid).toBe(true);
+  });
+
   it('should invalidate session (logout) by deleting Redis key', async () => {
     const mockUserId = 1;
     const mockToken = 'mock-token';
@@ -60,5 +85,15 @@ describe('AuthService', () => {
 
     const storedToken = await redisClient.get(`user:session:${mockUserId}`);
     expect(storedToken).toBe(null);
+  });
+
+  it('should proceed with logout even if Redis fails', async () => {
+    const mockUserId = 1;
+
+    jest.spyOn(redisClient, 'del').mockRejectedValue(new Error('Redis unavailable'));
+
+    await authService.logout(mockUserId);
+
+    // Test passes if no error is thrown despite Redis failure
   });
 });
