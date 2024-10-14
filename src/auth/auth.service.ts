@@ -47,6 +47,20 @@ export class AuthService {
     return { access_token: token };
   }
 
+  // Extend session TTL in Redis on user activity (e.g., sending a message)
+  async extendSessionTTL(userId: number): Promise<void> {
+    const sessionKey = `user:session:${userId}`;
+    try {
+      // Refresh TTL to 1 hour on user activity
+      await this.redisClient.expire(sessionKey, 3600);
+      this.logger.log(`Extended session TTL for user ${userId}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to extend session TTL in Redis for user ${userId}: ${error.message}`,
+      );
+    }
+  }
+
   // Check session validity in Redis with fallback to always return true
   async isSessionValid(userId: number, token: string): Promise<boolean> {
     const sessionKey = `user:session:${userId}`;
@@ -56,7 +70,9 @@ export class AuthService {
       return storedToken === token;
     } catch (error) {
       // Log Redis failure and proceed as if the session is valid
-      this.logger.error(`Failed to validate session in Redis for user ${userId}: ${error.message}`);
+      this.logger.error(
+        `Failed to validate session in Redis for user ${userId}: ${error.message}`,
+      );
       return true; // Default to true for user experience if Redis is down
     }
   }
@@ -84,7 +100,9 @@ export class AuthService {
       await this.redisClient.del(sessionKey);
     } catch (error) {
       // Log Redis failure and proceed with logout
-      this.logger.error(`Failed to delete session in Redis for user ${userId}: ${error.message}`);
+      this.logger.error(
+        `Failed to delete session in Redis for user ${userId}: ${error.message}`,
+      );
     }
   }
 }
