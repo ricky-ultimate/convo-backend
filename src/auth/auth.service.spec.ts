@@ -96,4 +96,26 @@ describe('AuthService', () => {
 
     // Test passes if no error is thrown despite Redis failure
   });
+
+  // Test session extension during user activity
+  it('should extend session TTL on user activity', async () => {
+    const mockUserId = 1;
+    await redisClient.set(`user:session:${mockUserId}`, 'mock-token', 'EX', 3600); // Set initial TTL
+
+    // Call session TTL extension
+    await authService.extendSessionTTL(mockUserId);
+
+    // Check if the session TTL was extended to 3600 seconds (1 hour)
+    const ttl = await redisClient.ttl(`user:session:${mockUserId}`);
+    expect(ttl).toBeGreaterThan(3599); // Check that TTL was refreshed
+  });
+
+  it('should proceed without error if Redis fails during TTL extension', async () => {
+    const mockUserId = 1;
+
+    jest.spyOn(redisClient, 'expire').mockRejectedValue(new Error('Redis unavailable'));
+
+    // Ensure no error is thrown even if Redis fails during TTL extension
+    await expect(authService.extendSessionTTL(mockUserId)).resolves.not.toThrow();
+  });
 });
