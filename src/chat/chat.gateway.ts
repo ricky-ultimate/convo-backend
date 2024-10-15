@@ -84,26 +84,37 @@ export class ChatGateway
     const username = socket.data.user.username;
 
     if (!roomId || !username) {
-      this.logger.error(
-        `Room ID or Username is missing for socket: ${socket.id}`,
-      );
-      socket.emit('error', 'Room ID or Username is missing.');
+      const errorMsg = 'Room ID or Username is missing.';
+      this.logger.error(errorMsg);
+      socket.emit('error', { message: errorMsg, code: 'INVALID_REQUEST' });
       return;
     }
 
-    const isMember = await this.chatService.isUserInRoom(roomId, username);
-    if (!isMember) {
-      this.logger.error(`User ${username} is not a member of room ${roomId}`);
-      socket.emit('error', 'You are not a member of this room.');
-      return;
+    try {
+      const isMember = await this.chatService.isUserInRoom(roomId, username);
+      if (!isMember) {
+        const errorMsg = `User ${username} is not a member of room ${roomId}`;
+        this.logger.error(errorMsg);
+        socket.emit('error', {
+          message: 'You are not a member of this room.',
+          code: 'UNAUTHORIZED',
+        });
+        return;
+      }
+
+      socket.join(roomId);
+      this.server.to(roomId).emit('userJoined', { username, roomId });
+      this.logger.log(`User ${username} joined room ${roomId}`);
+
+      // Extend session TTL on joining a room
+      await this.authService.extendSessionTTL(socket.data.user.sub);
+    } catch (error) {
+      this.logger.error(`Error joining room ${roomId}: ${error.message}`);
+      socket.emit('error', {
+        message: 'An error occurred while joining the room.',
+        code: 'SERVER_ERROR',
+      });
     }
-
-    socket.join(roomId);
-    this.server.to(roomId).emit('userJoined', { username, roomId });
-    this.logger.log(`User ${username} joined room ${roomId}`);
-
-    // Extend session TTL on joining a room
-    await this.authService.extendSessionTTL(socket.data.user.sub);
   }
 
   @SubscribeMessage('message')
@@ -114,51 +125,63 @@ export class ChatGateway
     const { roomId, content } = data;
     const username = socket.data.user.username;
 
-    if (!roomId || !username) {
-      this.logger.error(
-        `Room ID or Username is missing for socket: ${socket.id}`,
-      );
-      await socket.emit('error', 'Room ID or Username is missing.');
+    if (!roomId || !username || !content) {
+      const errorMsg = 'Room ID, Username or Message content is missing.';
+      this.logger.error(errorMsg);
+      await socket.emit('error', {
+        message: errorMsg,
+        code: 'INVALID_REQUEST',
+      });
       return;
     }
 
     try {
       const isMember = await this.chatService.isUserInRoom(roomId, username);
       if (!isMember) {
-        this.logger.error(`User ${username} is not a member of room ${roomId}`);
-        await socket.emit('error', 'You are not a member of this room.');
+        const errorMsg = `User ${username} is not a member of room ${roomId}`;
+        this.logger.error(errorMsg);
+        await socket.emit('error', {
+          message: 'You are not a member of this room.',
+          code: 'UNAUTHORIZED',
+        });
         return;
       }
 
       await this.rateLimiter.consume(socket.id);
     } catch (rateLimiterRes) {
-      await socket.emit('error', 'Rate limit exceeded. Please slow down.');
       this.logger.error('Rate Limit exceeded, please slow down');
-      throw new Error('Rate limit exceeded');
-    }
-
-    this.logger.log(`Message from ${username} in room ${roomId}: ${content}`);
-
-    const sanitizedContent = content
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-    const message = await this.chatService.addMessage(
-      roomId,
-      sanitizedContent,
-      username,
-    );
-
-    if (!message) {
-      this.logger.error(
-        `Failed to save message from ${username} in room ${roomId}`,
-      );
-      await socket.emit('error', 'Failed to save message.');
+      await socket.emit('error', {
+        message: 'Rate limit exceeded. Please slow down.',
+        code: 'RATE_LIMIT',
+      });
       return;
     }
 
-    this.server.to(roomId).emit('message', { ...message, user: { username } });
+    try {
+      const sanitizedContent = content
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const message = await this.chatService.addMessage(
+        roomId,
+        sanitizedContent,
+        username,
+      );
+      if (!message) {
+        throw new Error('Failed to save message.');
+      }
 
-    // Extend session TTL on sending a message
-    await this.authService.extendSessionTTL(socket.data.user.sub);
+      this.server
+        .to(roomId)
+        .emit('message', { ...message, user: { username } });
+      await this.authService.extendSessionTTL(socket.data.user.sub);
+    } catch (error) {
+      this.logger.error(
+        `Failed to save message from ${username} in room ${roomId}: ${error.message}`,
+      );
+      await socket.emit('error', {
+        message: 'Failed to send message.',
+        code: 'SERVER_ERROR',
+      });
+    }
   }
 }
