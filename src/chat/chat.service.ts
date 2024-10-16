@@ -67,6 +67,7 @@ export class ChatService {
         userId: user.id,
         chatRoomId: chatRoom.id,
       },
+      include: { user: true },  // Include user data when saving the message
     });
 
     // Fetch cached recent messages and add the new one
@@ -76,8 +77,12 @@ export class ChatService {
     // Cache updated messages
     await this.cacheMessages(chatRoom.id.toString(), updatedMessages);
 
-    return message;
+    return {
+      ...message,
+      user: { username: user.username },  // Explicitly return the user object with the username
+    };
   }
+
 
   // Fetch messages from DB with fallback if Redis is down
   async getMessages(chatRoomName: string) {
@@ -87,7 +92,12 @@ export class ChatService {
     const cachedMessages = await this.getCachedMessages(chatRoom.id.toString());
     if (cachedMessages && cachedMessages.length > 0) {
       this.logger.log(`Returning cached messages for room: ${chatRoom.id}`);
-      return cachedMessages; // Return cached messages if available
+
+      // Ensure cached messages contain user data
+      return cachedMessages.map(message => ({
+        ...message,
+        user: { username: message.user.username || 'Anonymous' }
+      }));
     }
 
     // If not cached, fetch from DB
@@ -101,8 +111,12 @@ export class ChatService {
     // Cache fetched messages for future requests
     await this.cacheMessages(chatRoom.id.toString(), validMessages);
 
-    return validMessages;
+    return validMessages.map(message => ({
+      ...message,
+      user: { username: message.user.username }
+    }));
   }
+
 
   // Check if the user is in the room
   async isUserInRoom(roomId: string, username: string): Promise<boolean> {
