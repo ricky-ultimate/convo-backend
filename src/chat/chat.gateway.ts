@@ -154,7 +154,7 @@ export class ChatGateway
         message: 'Rate limit exceeded. Please slow down.',
         code: 'RATE_LIMIT',
       });
-      return;
+      throw new Error('Rate limit exceeded'); // Explicitly throw the error
     }
 
     try {

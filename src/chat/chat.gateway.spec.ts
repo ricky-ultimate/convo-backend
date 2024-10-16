@@ -83,7 +83,7 @@ describe('ChatGateway', () => {
     jest.spyOn(chatGateway['rateLimiter'], 'consume').mockRejectedValue(new Error('Rate limit exceeded'));
 
     await expect(chatGateway.handleMessage(socket, data)).rejects.toThrow('Rate limit exceeded');
-    expect(socket.emit).toHaveBeenCalledWith('error', 'Rate limit exceeded. Please slow down.');
+    expect(socket.emit).toHaveBeenCalledWith('error', { message: 'Rate limit exceeded. Please slow down.', code: 'RATE_LIMIT' });
   });
 
   it('should extend session TTL when a user joins a room', async () => {
@@ -111,6 +111,7 @@ describe('ChatGateway', () => {
       userId: 1,
       chatRoomId: 1,
       createdAt: new Date(),
+      user: { username: 'testuser' },  // Ensure the user object is returned
     };
 
     jest.spyOn(chatGateway['chatService'], 'isUserInRoom').mockResolvedValue(true);
@@ -122,7 +123,7 @@ describe('ChatGateway', () => {
     expect(authService.extendSessionTTL).toHaveBeenCalledWith(1);
     // Ensure the mock server's 'to' method was called
     expect(serverMock.to).toHaveBeenCalledWith('room-1');
-    // Ensure the 'emit' method inside 'to' was called
+    // Ensure the 'emit' method inside 'to' was called with the correct message structure
     expect(serverMock.to().emit).toHaveBeenCalledWith('message', { ...message, user: { username: 'testuser' } });
   });
 });
