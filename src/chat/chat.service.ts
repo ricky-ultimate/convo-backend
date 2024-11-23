@@ -30,7 +30,9 @@ export class ChatService {
       await this.redisClient.set(key, JSON.stringify(messages), 'EX', 60 * 10); // Cache for 10 minutes
       this.logger.log(`Cached messages for room: ${roomId}`);
     } catch (error) {
-      this.logger.error(`Failed to cache messages in Redis for room ${roomId}: ${error.message}`);
+      this.logger.error(
+        `Failed to cache messages in Redis for room ${roomId}: ${error.message}`,
+      );
     }
   }
 
@@ -49,7 +51,9 @@ export class ChatService {
       }
     } catch (error) {
       // Log Redis failure and fall back to fetching from DB
-      this.logger.error(`Failed to fetch messages from Redis for room ${roomId}: ${error.message}`);
+      this.logger.error(
+        `Failed to fetch messages from Redis for room ${roomId}: ${error.message}`,
+      );
       return null;
     }
   }
@@ -57,7 +61,9 @@ export class ChatService {
   // Method to add a message and cache recent ones in Redis
   async addMessage(chatRoomName: string, content: string, username: string) {
     const user = await this.prisma.user.findUnique({ where: { username } });
-    const chatRoom = await this.prisma.chatRoom.findUnique({ where: { name: chatRoomName } });
+    const chatRoom = await this.prisma.chatRoom.findUnique({
+      where: { name: chatRoomName },
+    });
 
     if (!user || !chatRoom) throw new Error('User or chat room not found.');
 
@@ -67,26 +73,29 @@ export class ChatService {
         userId: user.id,
         chatRoomId: chatRoom.id,
       },
-      include: { user: true },  // Include user data when saving the message
+      include: { user: true }, // Include user data when saving the message
     });
 
     // Fetch cached recent messages and add the new one
     const recentMessages = await this.getCachedMessages(chatRoom.id.toString());
-    const updatedMessages = recentMessages ? [...recentMessages, message] : [message];
+    const updatedMessages = recentMessages
+      ? [...recentMessages, message]
+      : [message];
 
     // Cache updated messages
     await this.cacheMessages(chatRoom.id.toString(), updatedMessages);
 
     return {
       ...message,
-      user: { username: user.username },  // Explicitly return the user object with the username
+      user: { username: user.username }, // Explicitly return the user object with the username
     };
   }
 
-
   // Fetch messages from DB with fallback if Redis is down
   async getMessages(chatRoomName: string) {
-    const chatRoom = await this.prisma.chatRoom.findUnique({ where: { name: chatRoomName } });
+    const chatRoom = await this.prisma.chatRoom.findUnique({
+      where: { name: chatRoomName },
+    });
 
     // Check cache first, fall back to DB if Redis fails
     const cachedMessages = await this.getCachedMessages(chatRoom.id.toString());
@@ -94,9 +103,9 @@ export class ChatService {
       this.logger.log(`Returning cached messages for room: ${chatRoom.id}`);
 
       // Ensure cached messages contain user data
-      return cachedMessages.map(message => ({
+      return cachedMessages.map((message) => ({
         ...message,
-        user: { username: message.user.username || 'Anonymous' }
+        user: { username: message.user.username || 'Anonymous' },
       }));
     }
 
@@ -111,12 +120,45 @@ export class ChatService {
     // Cache fetched messages for future requests
     await this.cacheMessages(chatRoom.id.toString(), validMessages);
 
-    return validMessages.map(message => ({
+    return validMessages.map((message) => ({
       ...message,
-      user: { username: message.user.username }
+      user: { username: message.user.username },
     }));
   }
 
+  // Method to delete a message and invalidate the cache
+  async deleteMessage(messageId: number, chatRoomName: string) {
+    const chatRoom = await this.prisma.chatRoom.findUnique({
+      where: { name: chatRoomName },
+    });
+
+    if (!chatRoom) {
+      throw new Error('Chat room not found.');
+    }
+
+    // Delete the message from the database
+    await this.prisma.message.delete({
+      where: { id: messageId },
+    });
+
+    // Fetch updated messages from the database
+    const updatedMessages = await this.prisma.message.findMany({
+      where: { chatRoomId: chatRoom.id },
+      include: { user: true },
+    });
+
+    const validMessages = updatedMessages.map((message) => ({
+      ...message,
+      user: { username: message.user.username },
+    }));
+
+    // Update the cache with the latest messages
+    await this.cacheMessages(chatRoom.id.toString(), validMessages);
+
+    this.logger.log(
+      `Deleted message ${messageId} and updated cache for room: ${chatRoomName}`,
+    );
+  }
 
   // Check if the user is in the room
   async isUserInRoom(roomId: string, username: string): Promise<boolean> {

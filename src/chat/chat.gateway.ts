@@ -184,4 +184,48 @@ export class ChatGateway
       });
     }
   }
+
+  @SubscribeMessage('deleteMessage')
+  async handleDeleteMessage(
+    socket: Socket,
+    data: { roomId: string; messageId: number },
+  ) {
+    const { roomId, messageId } = data;
+    const username = socket.data.user.username;
+
+    if (!roomId || !messageId) {
+      const errorMsg = 'Room ID or Message ID is missing.';
+      this.logger.error(errorMsg);
+      socket.emit('error', { message: errorMsg, code: 'INVALID_REQUEST' });
+      return;
+    }
+
+    try {
+      const isMember = await this.chatService.isUserInRoom(roomId, username);
+      if (!isMember) {
+        const errorMsg = `User ${username} is not a member of room ${roomId}`;
+        this.logger.error(errorMsg);
+        socket.emit('error', {
+          message: 'You are not a member of this room.',
+          code: 'UNAUTHORIZED',
+        });
+        return;
+      }
+
+      // Delete the message and update cache
+      await this.chatService.deleteMessage(messageId, roomId);
+
+      // Fetch updated messages and broadcast to the room
+      const updatedMessages = await this.chatService.getMessages(roomId);
+      this.server.to(roomId).emit('messagesUpdated', updatedMessages);
+    } catch (error) {
+      this.logger.error(
+        `Failed to delete message in room ${roomId}: ${error.message}`,
+      );
+      socket.emit('error', {
+        message: 'Failed to delete message.',
+        code: 'SERVER_ERROR',
+      });
+    }
+  }
 }
