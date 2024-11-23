@@ -12,12 +12,7 @@ describe('AuthService', () => {
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        AuthService,
-        PrismaService,
-        JwtService,
-        ConfigService,
-      ],
+      providers: [AuthService, PrismaService, JwtService, ConfigService],
     }).compile();
 
     authService = module.get<AuthService>(AuthService);
@@ -46,7 +41,9 @@ describe('AuthService', () => {
     const token = 'mock-token';
 
     jest.spyOn(authService['jwtService'], 'sign').mockReturnValue(token);
-    jest.spyOn(redisClient, 'set').mockRejectedValue(new Error('Redis unavailable'));
+    jest
+      .spyOn(redisClient, 'set')
+      .mockRejectedValue(new Error('Redis unavailable'));
 
     const result = await authService.login(mockUser);
 
@@ -59,7 +56,10 @@ describe('AuthService', () => {
     const mockToken = 'mock-token';
 
     await redisClient.set(`user:session:${mockUserId}`, mockToken);
-    const sessionValid = await authService.isSessionValid(mockUserId, mockToken);
+    const sessionValid = await authService.isSessionValid(
+      mockUserId,
+      mockToken,
+    );
 
     expect(sessionValid).toBe(true);
   });
@@ -68,9 +68,14 @@ describe('AuthService', () => {
     const mockUserId = 1;
     const mockToken = 'mock-token';
 
-    jest.spyOn(redisClient, 'get').mockRejectedValue(new Error('Redis unavailable'));
+    jest
+      .spyOn(redisClient, 'get')
+      .mockRejectedValue(new Error('Redis unavailable'));
 
-    const sessionValid = await authService.isSessionValid(mockUserId, mockToken);
+    const sessionValid = await authService.isSessionValid(
+      mockUserId,
+      mockToken,
+    );
 
     // Should return true if Redis is down
     expect(sessionValid).toBe(true);
@@ -90,7 +95,9 @@ describe('AuthService', () => {
   it('should proceed with logout even if Redis fails', async () => {
     const mockUserId = 1;
 
-    jest.spyOn(redisClient, 'del').mockRejectedValue(new Error('Redis unavailable'));
+    jest
+      .spyOn(redisClient, 'del')
+      .mockRejectedValue(new Error('Redis unavailable'));
 
     await authService.logout(mockUserId);
 
@@ -100,7 +107,12 @@ describe('AuthService', () => {
   // Test session extension during user activity
   it('should extend session TTL on user activity', async () => {
     const mockUserId = 1;
-    await redisClient.set(`user:session:${mockUserId}`, 'mock-token', 'EX', 3600); // Set initial TTL
+    await redisClient.set(
+      `user:session:${mockUserId}`,
+      'mock-token',
+      'EX',
+      3600,
+    ); // Set initial TTL
 
     // Call session TTL extension
     await authService.extendSessionTTL(mockUserId);
@@ -113,9 +125,13 @@ describe('AuthService', () => {
   it('should proceed without error if Redis fails during TTL extension', async () => {
     const mockUserId = 1;
 
-    jest.spyOn(redisClient, 'expire').mockRejectedValue(new Error('Redis unavailable'));
+    jest
+      .spyOn(redisClient, 'expire')
+      .mockRejectedValue(new Error('Redis unavailable'));
 
     // Ensure no error is thrown even if Redis fails during TTL extension
-    await expect(authService.extendSessionTTL(mockUserId)).resolves.not.toThrow();
+    await expect(
+      authService.extendSessionTTL(mockUserId),
+    ).resolves.not.toThrow();
   });
 });

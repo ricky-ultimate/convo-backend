@@ -10,7 +10,13 @@ import { RedisModule } from './redis/redis.module';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [PrismaModule, AuthModule, ChatModule, RedisModule, ConfigModule.forRoot({isGlobal: true, envFilePath: '.env'})],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    ChatModule,
+    RedisModule,
+    ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+  ],
   controllers: [AppController, AuthController],
   providers: [AppService, ChatService],
 })

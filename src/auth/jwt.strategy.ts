@@ -17,7 +17,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(req: Request, payload: any) {
     const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
-    const sessionValid = await this.authService.isSessionValid(payload.sub, token);
+    const sessionValid = await this.authService.isSessionValid(
+      payload.sub,
+      token,
+    );
 
     if (!sessionValid) {
       throw new UnauthorizedException('Session expired or invalid.');
