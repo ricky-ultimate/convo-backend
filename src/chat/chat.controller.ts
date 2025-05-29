@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
   UseGuards,
   InternalServerErrorException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -17,18 +18,74 @@ import { AuthenticatedRequest } from '../auth/types';
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
+  @UseGuards(JwtAuthGuard)
   @Post('room')
-  createRoom(@Body('name') name: string) {
-    return this.chatService.createChatRoom(name);
+  async createRoom(
+    @Body('name') name: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    if (!name || name.trim().length === 0) {
+      throw new BadRequestException('Room name is required');
+    }
+
+    if (name.length > 50) {
+      throw new BadRequestException(
+        'Room name must be less than 50 characters',
+      );
+    }
+
+    try {
+      return await this.chatService.createChatRoom(name.trim());
+    } catch (error) {
+      if (error.code === 'P2002') {
+        throw new BadRequestException('Room name already exists');
+      }
+      throw new InternalServerErrorException('Failed to create room');
+    }
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('message')
-  addMessage(
+  async addMessage(
     @Body('chatRoomName') chatRoomName: string,
     @Body('content') content: string,
-    @Body('username') username: string,
+    @Req() request: AuthenticatedRequest,
   ) {
-    return this.chatService.addMessage(chatRoomName, content, username);
+    const username = request.user.username;
+
+    if (!chatRoomName || !content) {
+      throw new BadRequestException('Chat room name and content are required');
+    }
+
+    if (content.length > 1000) {
+      throw new BadRequestException(
+        'Message content must be less than 1000 characters',
+      );
+    }
+
+    try {
+      const isMember = await this.chatService.isUserInRoom(
+        chatRoomName,
+        username,
+      );
+      if (!isMember) {
+        throw new UnauthorizedException('You are not a member of this room');
+      }
+
+      return await this.chatService.addMessage(
+        chatRoomName,
+        content.trim(),
+        username,
+      );
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to send message');
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -39,23 +96,67 @@ export class ChatController {
   ) {
     const user = request.user;
 
+    if (!chatRoomName) {
+      throw new BadRequestException('Chat room name is required');
+    }
+
     try {
       const isMember = await this.chatService.isUserInRoom(
         chatRoomName,
         user.username,
       );
       if (!isMember) {
-        throw new UnauthorizedException('You are not a member of this room.');
+        throw new UnauthorizedException('You are not a member of this room');
       }
 
       return await this.chatService.getMessages(chatRoomName);
     } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        throw error; // Bubble up specific error
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
       }
       throw new InternalServerErrorException(
-        'An error occurred while retrieving messages.',
+        'An error occurred while retrieving messages',
       );
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('join')
+  async joinRoom(
+    @Body('roomName') roomName: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const username = request.user.username;
+
+    if (!roomName) {
+      throw new BadRequestException('Room name is required');
+    }
+
+    try {
+      return await this.chatService.joinRoom(roomName, username);
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        throw new BadRequestException('Room not found');
+      }
+      if (error.message.includes('already a member')) {
+        throw new BadRequestException('You are already a member of this room');
+      }
+      throw new InternalServerErrorException('Failed to join room');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('rooms')
+  async getUserRooms(@Req() request: AuthenticatedRequest) {
+    const username = request.user.username;
+
+    try {
+      return await this.chatService.getUserRooms(username);
+    } catch (error) {
+      throw new InternalServerErrorException('Failed to retrieve rooms');
     }
   }
 }
