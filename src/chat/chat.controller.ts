@@ -13,6 +13,10 @@ import {
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../auth/types';
+import { CreateRoomDto } from './dto/create-message.dto';
+import { SendMessageDto } from './dto/send-message.dto';
+import { JoinRoomDto } from './dto/join-room.dto';
+import { GetMessagesDto } from './dto/get-message.dto';
 
 @Controller('chat')
 export class ChatController {
@@ -21,9 +25,10 @@ export class ChatController {
   @UseGuards(JwtAuthGuard)
   @Post('room')
   async createRoom(
-    @Body('name') name: string,
+    @Body() createRoomDto: CreateRoomDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    const { name } = createRoomDto;
     if (!name || name.trim().length === 0) {
       throw new BadRequestException('Room name is required');
     }
@@ -47,10 +52,10 @@ export class ChatController {
   @UseGuards(JwtAuthGuard)
   @Post('message')
   async addMessage(
-    @Body('chatRoomName') chatRoomName: string,
-    @Body('content') content: string,
+    @Body() sendMessageDto: SendMessageDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    const { chatRoomName, content } = sendMessageDto;
     const username = request.user.username;
 
     if (!chatRoomName || !content) {
@@ -91,9 +96,10 @@ export class ChatController {
   @UseGuards(JwtAuthGuard)
   @Get('messages')
   async getMessages(
-    @Query('chatRoomName') chatRoomName: string,
+    @Query() getMessagesDto: GetMessagesDto,
     @Req() request: AuthenticatedRequest,
   ) {
+    const { chatRoomName } = getMessagesDto;
     const user = request.user;
 
     if (!chatRoomName) {
@@ -126,10 +132,11 @@ export class ChatController {
   @UseGuards(JwtAuthGuard)
   @Post('join')
   async joinRoom(
-    @Body('roomName') roomName: string,
+    @Body() joinRoomDto: JoinRoomDto,
     @Req() request: AuthenticatedRequest,
   ) {
     const username = request.user.username;
+    const { roomName } = joinRoomDto;
 
     if (!roomName) {
       throw new BadRequestException('Room name is required');
