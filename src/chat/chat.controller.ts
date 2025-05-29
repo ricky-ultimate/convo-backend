@@ -9,6 +9,7 @@ import {
   UseGuards,
   InternalServerErrorException,
   BadRequestException,
+  Param,
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -136,14 +137,14 @@ export class ChatController {
     @Req() request: AuthenticatedRequest,
   ) {
     const username = request.user.username;
-    const { roomName } = joinRoomDto;
+    const { roomId } = joinRoomDto;
 
-    if (!roomName) {
-      throw new BadRequestException('Room name is required');
+    if (!roomId) {
+      throw new BadRequestException('Room ID is required');
     }
 
     try {
-      return await this.chatService.joinRoom(roomName, username);
+      return await this.chatService.joinRoom(roomId, username);
     } catch (error) {
       if (error.message.includes('not found')) {
         throw new BadRequestException('Room not found');
@@ -152,6 +153,95 @@ export class ChatController {
         throw new BadRequestException('You are already a member of this room');
       }
       throw new InternalServerErrorException('Failed to join room');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('leave/:roomId')
+  async leaveRoom(
+    @Param('roomId') roomId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const username = request.user.username;
+
+    if (!roomId) {
+      throw new BadRequestException('Room ID is required');
+    }
+
+    try {
+      return await this.chatService.leaveRoom(roomId, username);
+    } catch (error) {
+      if (error.message.includes('not found')) {
+        throw new BadRequestException('Room not found');
+      }
+      if (error.message.includes('not a member')) {
+        throw new BadRequestException('You are not a member of this room');
+      }
+      throw new InternalServerErrorException('Failed to leave room');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('room/:roomId/members')
+  async getRoomMembers(
+    @Param('roomId') roomId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    if (!roomId) {
+      throw new BadRequestException('Room ID is required');
+    }
+
+    try {
+      const isMember = await this.chatService.isUserInRoom(
+        roomId,
+        request.user.username,
+      );
+      if (!isMember) {
+        throw new UnauthorizedException('You are not a member of this room');
+      }
+
+      return await this.chatService.getRoomMembers(roomId);
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve room members');
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('room/:roomId/messages')
+  async getMessagesByRoomId(
+    @Param('roomId') roomId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    if (!roomId) {
+      throw new BadRequestException('Room ID is required');
+    }
+
+    try {
+      const isMember = await this.chatService.isUserInRoom(
+        roomId,
+        request.user.username,
+      );
+      if (!isMember) {
+        throw new UnauthorizedException('You are not a member of this room');
+      }
+
+      return await this.chatService.getMessages(roomId);
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'An error occurred while retrieving messages',
+      );
     }
   }
 
