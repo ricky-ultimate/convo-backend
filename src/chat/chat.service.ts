@@ -60,18 +60,12 @@ export class ChatService {
     return null;
   }
 
-  async addMessage(roomIdentifier: string, content: string, username: string) {
+  async addMessage(roomId: string, content: string, username: string) {
     const user = await this.prisma.user.findUnique({ where: { username } });
 
-    let chatRoom = await this.prisma.chatRoom.findUnique({
-      where: { id: roomIdentifier },
+    const chatRoom = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
     });
-
-    if (!chatRoom) {
-      chatRoom = await this.prisma.chatRoom.findUnique({
-        where: { name: roomIdentifier },
-      });
-    }
 
     if (!user) {
       throw new BadRequestException('User not found');
@@ -101,13 +95,13 @@ export class ChatService {
       return newMessage;
     });
 
-    const cachedMessages = await this.getCachedMessages(chatRoom.id.toString());
+    const cachedMessages = await this.getCachedMessages(roomId);
     const updatedMessages = cachedMessages
       ? [...cachedMessages, message]
       : [message];
 
     const messagesToCache = updatedMessages.slice(-50);
-    await this.cacheMessages(chatRoom.id.toString(), messagesToCache);
+    await this.cacheMessages(roomId, messagesToCache);
 
     return {
       ...message,
@@ -115,27 +109,19 @@ export class ChatService {
     };
   }
 
-  async getMessages(roomIdentifier: string, page = 1, limit = 50) {
-    let chatRoom = await this.prisma.chatRoom.findUnique({
-      where: { id: roomIdentifier },
+  async getMessages(roomId: string, page = 1, limit = 50) {
+    const chatRoom = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
     });
-
-    if (!chatRoom) {
-      chatRoom = await this.prisma.chatRoom.findUnique({
-        where: { name: roomIdentifier },
-      });
-    }
 
     if (!chatRoom) {
       throw new BadRequestException('Chat room not found');
     }
 
     if (page === 1) {
-      const cachedMessages = await this.getCachedMessages(
-        chatRoom.id.toString(),
-      );
+      const cachedMessages = await this.getCachedMessages(roomId);
       if (cachedMessages && cachedMessages.length > 0) {
-        this.logger.log(`Returning cached messages for room: ${chatRoom.id}`);
+        this.logger.log(`Returning cached messages for room: ${roomId}`);
         return cachedMessages.map((message) => ({
           ...message,
           user: { username: message.user?.username || 'Anonymous' },
@@ -162,7 +148,7 @@ export class ChatService {
     const reversedMessages = validMessages.reverse();
 
     if (page === 1) {
-      await this.cacheMessages(chatRoom.id.toString(), reversedMessages);
+      await this.cacheMessages(roomId, reversedMessages);
     }
 
     return reversedMessages.map((message) => ({
@@ -171,16 +157,10 @@ export class ChatService {
     }));
   }
 
-  async deleteMessage(messageId: string, roomIdentifier: string) {
-    let chatRoom = await this.prisma.chatRoom.findUnique({
-      where: { id: roomIdentifier },
+  async deleteMessage(messageId: string, roomId: string) {
+    const chatRoom = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
     });
-
-    if (!chatRoom) {
-      chatRoom = await this.prisma.chatRoom.findUnique({
-        where: { name: roomIdentifier },
-      });
-    }
 
     if (!chatRoom) {
       throw new BadRequestException('Chat room not found');
@@ -205,27 +185,18 @@ export class ChatService {
       });
     });
 
-    const cacheKey = `chat:room:${chatRoom.id}:messages`;
+    const cacheKey = `chat:room:${roomId}:messages`;
     await this.redisService.del(cacheKey);
 
     this.logger.log(
-      `Deleted message ${messageId} and invalidated cache for room: ${chatRoom.id}`,
+      `Deleted message ${messageId} and invalidated cache for room: ${roomId}`,
     );
   }
 
-  async isUserInRoom(
-    roomIdentifier: string,
-    username: string,
-  ): Promise<boolean> {
-    let chatRoom = await this.prisma.chatRoom.findUnique({
-      where: { id: roomIdentifier },
+  async isUserInRoom(roomId: string, username: string): Promise<boolean> {
+    const chatRoom = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
     });
-
-    if (!chatRoom) {
-      chatRoom = await this.prisma.chatRoom.findUnique({
-        where: { name: roomIdentifier },
-      });
-    }
 
     if (!chatRoom) {
       return false;
@@ -254,7 +225,6 @@ export class ChatService {
       throw new BadRequestException('Room not found');
     }
 
-    // Check if user is already a member
     const existingMembership = await this.prisma.chatRoomMembership.findFirst({
       where: {
         chatRoomId: chatRoom.id,
@@ -266,7 +236,6 @@ export class ChatService {
       throw new BadRequestException('You are already a member of this room');
     }
 
-    // Create membership
     const membership = await this.prisma.chatRoomMembership.create({
       data: {
         chatRoomId: chatRoom.id,
@@ -404,5 +373,34 @@ export class ChatService {
       username: membership.user.username,
       joinedAt: membership.createdAt,
     }));
+  }
+
+  async getRoomInfo(roomId: string) {
+    const chatRoom = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
+        _count: {
+          select: {
+            messages: true,
+            memberships: true,
+          },
+        },
+      },
+    });
+
+    if (!chatRoom) {
+      throw new BadRequestException('Room not found');
+    }
+
+    return {
+      id: chatRoom.id,
+      name: chatRoom.name,
+      createdAt: chatRoom.createdAt,
+      messageCount: chatRoom._count.messages,
+      memberCount: chatRoom._count.memberships,
+    };
   }
 }
