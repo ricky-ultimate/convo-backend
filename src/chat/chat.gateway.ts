@@ -13,7 +13,7 @@ import { Logger } from '@nestjs/common';
 import { RateLimiterRedis } from 'rate-limiter-flexible';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { Redis } from 'ioredis';
+import { RedisService } from '../redis/redis.service';
 
 @WebSocketGateway({ path: '/ws', cors: { origin: '*' } })
 export class ChatGateway
@@ -30,8 +30,9 @@ export class ChatGateway
     private readonly authService: AuthService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly redisService: RedisService,
   ) {
-    const redisClient = new Redis(this.configService.get<string>('REDIS_URL'));
+    const redisClient = this.redisService.getClient();
     const rateLimitPoints = this.configService.get<number>(
       'RATE_LIMIT_POINTS',
       5,
@@ -106,7 +107,6 @@ export class ChatGateway
       this.server.to(roomId).emit('userJoined', { username, roomId });
       this.logger.log(`User ${username} joined room ${roomId}`);
 
-      // Extend session TTL on joining a room
       await this.authService.extendSessionTTL(socket.data.user.sub);
     } catch (error) {
       this.logger.error(`Error joining room ${roomId}: ${error.message}`);
@@ -154,7 +154,7 @@ export class ChatGateway
         message: 'Rate limit exceeded. Please slow down.',
         code: 'RATE_LIMIT',
       });
-      throw new Error('Rate limit exceeded'); // Explicitly throw the error
+      throw new Error('Rate limit exceeded');
     }
 
     try {
@@ -212,10 +212,8 @@ export class ChatGateway
         return;
       }
 
-      // Delete the message and update cache
       await this.chatService.deleteMessage(messageId, roomId);
 
-      // Fetch updated messages and broadcast to the room
       const updatedMessages = await this.chatService.getMessages(roomId);
       this.server.to(roomId).emit('messagesUpdated', updatedMessages);
     } catch (error) {

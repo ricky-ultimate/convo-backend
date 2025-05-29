@@ -1,18 +1,10 @@
 import { Module } from '@nestjs/common';
-import { RedisModule as NestRedisModule } from '@nestjs-modules/ioredis';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
+import { RedisService } from './redis.service';
 
 @Module({
-  imports: [
-    ConfigModule, // Ensure you have ConfigModule for reading env vars
-    NestRedisModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        type: 'single', // Specify single instance Redis connection type
-        url: configService.get<string>('REDIS_URL'), // Read Redis URL from env
-      }),
-      inject: [ConfigService],
-    }),
-  ],
+  imports: [ConfigModule],
+  providers: [RedisService],
+  exports: [RedisService],
 })
 export class RedisModule {}

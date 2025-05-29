@@ -1,108 +1,145 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { RedisService } from '../redis/redis.service';
 import * as bcrypt from 'bcrypt';
-import { Redis } from 'ioredis';
 
 @Injectable()
 export class AuthService {
-  private redisClient: Redis;
-  private readonly logger = new Logger(AuthService.name); // Logger for Redis failure
+  private readonly logger = new Logger(AuthService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {
-    this.redisClient = new Redis(this.configService.get<string>('REDIS_URL'));
-  }
+    private readonly redisService: RedisService,
+  ) {}
 
-  // Validate user credentials (Login logic)
   async validateUser(email: string, password: string): Promise<any> {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (user && (await bcrypt.compare(password, user.password))) {
-      const { password, ...result } = user;
-      return result; // Return the user details without the password
+      const { password: _, ...result } = user;
+      return result;
     }
     return null;
   }
 
-  // Login and store session in Redis with fallback to proceed without Redis
   async login(user: any) {
     const payload = { username: user.username, sub: user.id };
     const token = this.jwtService.sign(payload);
     const sessionKey = `user:session:${user.id}`;
 
-    try {
-      // Try to store session in Redis
-      await this.redisClient.set(sessionKey, token, 'EX', 3600); // Store JWT for 1 hour
-    } catch (error) {
-      // Log Redis failure and proceed with login
-      this.logger.error(
-        `Failed to store session in Redis for user ${user.id}: ${error.message}`,
-      );
+    const stored = await this.redisService.set(sessionKey, token, 3600);
+    if (!stored) {
+      this.logger.warn(`Failed to store session in Redis for user ${user.id}`);
     }
 
     return { access_token: token };
   }
 
-  // Extend session TTL in Redis on user activity (e.g., sending a message)
   async extendSessionTTL(userId: number): Promise<void> {
     const sessionKey = `user:session:${userId}`;
-    try {
-      // Refresh TTL to 1 hour on user activity
-      await this.redisClient.expire(sessionKey, 3600);
+    const extended = await this.redisService.expire(sessionKey, 3600);
+
+    if (extended) {
       this.logger.log(`Extended session TTL for user ${userId}`);
-    } catch (error) {
-      this.logger.error(
-        `Failed to extend session TTL in Redis for user ${userId}: ${error.message}`,
-      );
+    } else {
+      this.logger.warn(`Failed to extend session TTL for user ${userId}`);
     }
   }
 
-  // Check session validity in Redis with fallback to always return true
   async isSessionValid(userId: number, token: string): Promise<boolean> {
     const sessionKey = `user:session:${userId}`;
+    const isRedisAvailable = await this.redisService.ping();
 
-    try {
-      const storedToken = await this.redisClient.get(sessionKey);
-      return storedToken === token;
-    } catch (error) {
-      // Log Redis failure and proceed as if the session is valid
-      this.logger.error(
-        `Failed to validate session in Redis for user ${userId}: ${error.message}`,
+    if (!isRedisAvailable) {
+      this.logger.warn(
+        'Redis is not available, falling back to JWT validation only',
       );
-      return true; // Default to true for user experience if Redis is down
-    }
-  }
 
-  // Register user and return JWT
+      try {
+        const decoded = this.jwtService.verify(token);
+        return decoded.sub === userId;
+      } catch (error) {
+        this.logger.error(
+          `JWT validation failed for user ${userId}: ${error.message}`,
+        );
+        return false;
+      }
+    }
+
+    const storedToken = await this.redisService.get(sessionKey);
+
+    if (!storedToken) {
+      this.logger.warn(`No session found in Redis for user ${userId}`);
+      return false;
+    }
+
+    return storedToken === token;
+  }
   async register(email: string, username: string, password: string) {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        username,
-        password: hashedPassword,
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [{ email }, { username }],
       },
     });
 
-    // After successful registration, generate and return the JWT token
-    return this.login(user);
-  }
+    if (existingUser) {
+      if (existingUser.email === email) {
+        throw new UnauthorizedException('Email already registered');
+      }
+      if (existingUser.username === username) {
+        throw new UnauthorizedException('Username already taken');
+      }
+    }
 
-  // Invalidate session (logout) with fallback to proceed without Redis
-  async logout(userId: number) {
-    const sessionKey = `user:session:${userId}`;
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     try {
-      await this.redisClient.del(sessionKey);
+      const user = await this.prisma.user.create({
+        data: {
+          email,
+          username,
+          password: hashedPassword,
+        },
+      });
+
+      return this.login(user);
     } catch (error) {
-      // Log Redis failure and proceed with logout
-      this.logger.error(
-        `Failed to delete session in Redis for user ${userId}: ${error.message}`,
-      );
+      this.logger.error(`Registration failed: ${error.message}`);
+      throw new UnauthorizedException('Registration failed');
     }
+  }
+
+  async logout(userId: number): Promise<boolean> {
+    const sessionKey = `user:session:${userId}`;
+    const deleted = await this.redisService.del(sessionKey);
+
+    if (deleted) {
+      this.logger.log(`Session deleted for user ${userId}`);
+    } else {
+      this.logger.warn(`Failed to delete session for user ${userId}`);
+    }
+
+    return deleted;
+  }
+
+  async getUserProfile(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    return user;
   }
 }
