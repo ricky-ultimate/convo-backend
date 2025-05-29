@@ -117,6 +117,33 @@ export class ChatGateway
     }
   }
 
+  @SubscribeMessage('leaveRoom')
+  async handleLeaveRoom(socket: Socket, data: { roomId: string }) {
+    const { roomId } = data;
+    const username = socket.data.user.username;
+
+    if (!roomId || !username) {
+      const errorMsg = 'Room ID or Username is missing.';
+      this.logger.error(errorMsg);
+      socket.emit('error', { message: errorMsg, code: 'INVALID_REQUEST' });
+      return;
+    }
+
+    try {
+      socket.leave(roomId);
+      this.server.to(roomId).emit('userLeft', { username, roomId });
+      this.logger.log(`User ${username} left room ${roomId}`);
+
+      await this.authService.extendSessionTTL(socket.data.user.sub);
+    } catch (error) {
+      this.logger.error(`Error leaving room ${roomId}: ${error.message}`);
+      socket.emit('error', {
+        message: 'An error occurred while leaving the room.',
+        code: 'SERVER_ERROR',
+      });
+    }
+  }
+
   @SubscribeMessage('message')
   async handleMessage(
     socket: Socket,
@@ -135,6 +162,37 @@ export class ChatGateway
       return;
     }
 
+    if (content.trim().length === 0) {
+      const errorMsg = 'Message content cannot be empty.';
+      this.logger.error(errorMsg);
+      await socket.emit('error', {
+        message: errorMsg,
+        code: 'INVALID_REQUEST',
+      });
+      return;
+    }
+
+    if (content.length > 1000) {
+      const errorMsg = 'Message content must be less than 1000 characters.';
+      this.logger.error(errorMsg);
+      await socket.emit('error', {
+        message: errorMsg,
+        code: 'INVALID_REQUEST',
+      });
+      return;
+    }
+
+    try {
+      await this.rateLimiter.consume(socket.id);
+    } catch (rateLimiterRes) {
+      this.logger.error(`Rate limit exceeded for socket: ${socket.id}`);
+      await socket.emit('error', {
+        message: 'Rate limit exceeded. Please slow down.',
+        code: 'RATE_LIMIT',
+      });
+      return;
+    }
+
     try {
       const isMember = await this.chatService.isUserInRoom(roomId, username);
       if (!isMember) {
@@ -147,33 +205,31 @@ export class ChatGateway
         return;
       }
 
-      await this.rateLimiter.consume(socket.id);
-    } catch (rateLimiterRes) {
-      this.logger.error('Rate Limit exceeded, please slow down');
-      await socket.emit('error', {
-        message: 'Rate limit exceeded. Please slow down.',
-        code: 'RATE_LIMIT',
-      });
-      throw new Error('Rate limit exceeded');
-    }
-
-    try {
       const sanitizedContent = content
         .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+        .replace(/>/g, '&gt;')
+        .trim();
+
       const message = await this.chatService.addMessage(
         roomId,
         sanitizedContent,
         username,
       );
+
       if (!message) {
         throw new Error('Failed to save message.');
       }
 
       this.server
         .to(roomId)
-        .emit('message', { ...message, user: { username } });
+        .emit('message', {
+          ...message,
+          user: { username: message.user.username },
+        });
+
       await this.authService.extendSessionTTL(socket.data.user.sub);
+
+      this.logger.log(`Message sent by ${username} in room ${roomId}`);
     } catch (error) {
       this.logger.error(
         `Failed to save message from ${username} in room ${roomId}: ${error.message}`,
@@ -216,12 +272,57 @@ export class ChatGateway
 
       const updatedMessages = await this.chatService.getMessages(roomId);
       this.server.to(roomId).emit('messagesUpdated', updatedMessages);
+
+      this.logger.log(
+        `Message ${messageId} deleted by ${username} in room ${roomId}`,
+      );
     } catch (error) {
       this.logger.error(
         `Failed to delete message in room ${roomId}: ${error.message}`,
       );
       socket.emit('error', {
         message: 'Failed to delete message.',
+        code: 'SERVER_ERROR',
+      });
+    }
+  }
+
+  @SubscribeMessage('getRoomMembers')
+  async handleGetRoomMembers(socket: Socket, data: { roomId: string }) {
+    const { roomId } = data;
+    const username = socket.data.user.username;
+
+    if (!roomId) {
+      const errorMsg = 'Room ID is missing.';
+      this.logger.error(errorMsg);
+      socket.emit('error', { message: errorMsg, code: 'INVALID_REQUEST' });
+      return;
+    }
+
+    try {
+      const isMember = await this.chatService.isUserInRoom(roomId, username);
+      if (!isMember) {
+        const errorMsg = `User ${username} is not a member of room ${roomId}`;
+        this.logger.error(errorMsg);
+        socket.emit('error', {
+          message: 'You are not a member of this room.',
+          code: 'UNAUTHORIZED',
+        });
+        return;
+      }
+
+      const members = await this.chatService.getRoomMembers(roomId);
+      socket.emit('roomMembers', { roomId, members });
+
+      this.logger.log(
+        `Room members retrieved for room ${roomId} by ${username}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to get room members for room ${roomId}: ${error.message}`,
+      );
+      socket.emit('error', {
+        message: 'Failed to retrieve room members.',
         code: 'SERVER_ERROR',
       });
     }
