@@ -38,7 +38,7 @@ export class AuthService {
     return { access_token: token };
   }
 
-  async extendSessionTTL(userId: number): Promise<void> {
+  async extendSessionTTL(userId: string): Promise<void> {
     const sessionKey = `user:session:${userId}`;
     const extended = await this.redisService.expire(sessionKey, 3600);
 
@@ -49,7 +49,7 @@ export class AuthService {
     }
   }
 
-  async isSessionValid(userId: number, token: string): Promise<boolean> {
+  async isSessionValid(userId: string, token: string): Promise<boolean> {
     const sessionKey = `user:session:${userId}`;
     const isRedisAvailable = await this.redisService.ping();
 
@@ -112,7 +112,7 @@ export class AuthService {
     }
   }
 
-  async logout(userId: number): Promise<boolean> {
+  async logout(userId: string): Promise<boolean> {
     const sessionKey = `user:session:${userId}`;
     const deleted = await this.redisService.del(sessionKey);
 
@@ -125,7 +125,7 @@ export class AuthService {
     return deleted;
   }
 
-  async getUserProfile(userId: number) {
+  async getUserProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {

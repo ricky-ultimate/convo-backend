@@ -158,7 +158,7 @@ export class ChatService {
     }));
   }
 
-  async deleteMessage(messageId: number, chatRoomName: string) {
+  async deleteMessage(messageId: string, chatRoomName: string) {
     const chatRoom = await this.prisma.chatRoom.findUnique({
       where: { name: chatRoomName },
     });

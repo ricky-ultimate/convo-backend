@@ -188,7 +188,7 @@ export class ChatGateway
   @SubscribeMessage('deleteMessage')
   async handleDeleteMessage(
     socket: Socket,
-    data: { roomId: string; messageId: number },
+    data: { roomId: string; messageId: string },
   ) {
     const { roomId, messageId } = data;
     const username = socket.data.user.username;
