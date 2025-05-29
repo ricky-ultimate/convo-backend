@@ -17,15 +17,20 @@ model User {
     chatRooms   ChatRoom[]           @relation("UsersInChatRooms")
     createdAt   DateTime             @default(now())
     updatedAt   DateTime             @updatedAt
+
+    @@index([email])
+    @@index([username])
 }
 
 model ChatRoom {
-    id          Int                  @id @default(autoincrement()) // Use ID as the primary key
-    name        String               @unique // Keep name unique for easy lookups
+    id          Int                  @id @default(autoincrement())
+    name        String               @unique
     users       User[]               @relation("UsersInChatRooms")
     messages    Message[]
     memberships ChatRoomMembership[]
     createdAt   DateTime             @default(now())
+
+    @@index([name])
 }
 
 model Message {
@@ -33,9 +38,13 @@ model Message {
     content    String
     user       User     @relation(fields: [userId], references: [id])
     userId     Int
-    chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id]) // Use chatRoomId instead of name
-    chatRoomId Int // Use an integer reference to ChatRoom ID
+    chatRoom   ChatRoom @relation(fields: [chatRoomId], references: [id])
+    chatRoomId Int
     createdAt  DateTime @default(now())
+
+    @@index([chatRoomId, createdAt])
+    @@index([userId])
+    @@index([chatRoomId])
 }
 
 model ChatRoomMembership {
@@ -46,5 +55,7 @@ model ChatRoomMembership {
     userId     Int
     createdAt  DateTime @default(now())
 
-    @@unique([chatRoomId, userId]) // Ensure no duplicate memberships
+    @@unique([chatRoomId, userId])
+    @@index([userId])
+    @@index([chatRoomId])
 }
