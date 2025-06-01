@@ -17,12 +17,25 @@ import { AuthenticatedRequest } from '../auth/types';
 import { CreateRoomDto } from './dto/create-message.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
-import { GetMessagesDto } from './dto/get-message.dto';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiCreateRoom,
+  ApiGetMessages,
+  ApiGetRoomInfo,
+  ApiGetRoomMembers,
+  ApiGetUserRooms,
+  ApiJoinRoom,
+  ApiLeaveRoom,
+  ApiSendMessage,
+} from '../common/decorators/chat.decorator';
 
+@ApiTags('Chat')
+@ApiBearerAuth('JWT-auth')
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
+  @ApiCreateRoom()
   @UseGuards(JwtAuthGuard)
   @Post('room')
   async createRoom(
@@ -52,6 +65,7 @@ export class ChatController {
     }
   }
 
+  @ApiSendMessage()
   @UseGuards(JwtAuthGuard)
   @Post('room/:roomId/message')
   async addMessage(
@@ -94,6 +108,7 @@ export class ChatController {
     }
   }
 
+  @ApiGetMessages()
   @UseGuards(JwtAuthGuard)
   @Get('room/:roomId/messages')
   async getMessages(
@@ -138,6 +153,7 @@ export class ChatController {
     }
   }
 
+  @ApiJoinRoom()
   @UseGuards(JwtAuthGuard)
   @Post('join')
   async joinRoom(
@@ -164,6 +180,7 @@ export class ChatController {
     }
   }
 
+  @ApiLeaveRoom()
   @UseGuards(JwtAuthGuard)
   @Post('leave/:roomId')
   async leaveRoom(
@@ -189,6 +206,7 @@ export class ChatController {
     }
   }
 
+  @ApiGetRoomMembers()
   @UseGuards(JwtAuthGuard)
   @Get('room/:roomId/members')
   async getRoomMembers(
@@ -220,6 +238,7 @@ export class ChatController {
     }
   }
 
+  @ApiGetUserRooms()
   @UseGuards(JwtAuthGuard)
   @Get('rooms')
   async getUserRooms(@Req() request: AuthenticatedRequest) {
@@ -232,6 +251,7 @@ export class ChatController {
     }
   }
 
+  @ApiGetRoomInfo()
   @UseGuards(JwtAuthGuard)
   @Get('room/:roomId')
   async getRoomInfo(
