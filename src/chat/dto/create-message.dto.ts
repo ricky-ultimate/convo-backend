@@ -1,12 +1,14 @@
-import {
-  IsString,
-  IsNotEmpty,
-  MinLength,
-  MaxLength,
-  Matches,
-} from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, MinLength, MaxLength, Matches } from 'class-validator';
 
 export class CreateRoomDto {
+  @ApiProperty({
+    example: 'General Chat',
+    description: 'Chat room name',
+    minLength: 1,
+    maxLength: 50,
+    pattern: '^[a-zA-Z0-9\\s_-]+$',
+  })
   @IsString()
   @IsNotEmpty({ message: 'Room name is required' })
   @MinLength(1, { message: 'Room name cannot be empty' })
