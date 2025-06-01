@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -29,11 +30,37 @@ async function bootstrap() {
       }),
     );
 
+    const config = new DocumentBuilder()
+      .setTitle('Chat API')
+      .setDescription('Real-time chat application API documentation')
+      .setVersion('1.0')
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          name: 'JWT',
+          description: 'Enter JWT token',
+          in: 'header',
+        },
+        'JWT-auth',
+      )
+      .addTag('Auth', 'Authentication endpoints')
+      .addTag('Chat', 'Chat room and messaging endpoints')
+      .build();
+
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document, {
+      swaggerOptions: {
+        persistAuthorization: true,
+      },
+    });
+
     app.useGlobalFilters(new GlobalExceptionFilter());
 
-    app.setGlobalPrefix('api', {
-      exclude: ['/'],
-    });
+    // app.setGlobalPrefix('v1', {
+    //   exclude: ['/'],
+    // });
 
     const port = process.env.PORT || 3000;
     await app.listen(port);
