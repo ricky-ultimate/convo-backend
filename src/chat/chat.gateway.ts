@@ -67,7 +67,7 @@ export class ChatGateway
       const decoded = this.jwtService.verify(token);
       socket.data.user = decoded;
       this.logger.log(
-        `Client connected: ${socket.id} with user ${decoded.username}`,
+        `Client connected: ${socket.id} with user ID ${decoded.sub} (${decoded.username})`,
       );
     } catch (err) {
       this.logger.error(`Invalid token for socket: ${socket.id}`);
@@ -82,19 +82,20 @@ export class ChatGateway
   @SubscribeMessage('joinRoom')
   async handleJoinRoom(socket: Socket, data: { roomId: string }) {
     const { roomId } = data;
+    const userId = socket.data.user.sub;
     const username = socket.data.user.username;
 
-    if (!roomId || !username) {
-      const errorMsg = 'Room ID or Username is missing.';
+    if (!roomId || !userId) {
+      const errorMsg = 'Room ID or User ID is missing.';
       this.logger.error(errorMsg);
       socket.emit('error', { message: errorMsg, code: 'INVALID_REQUEST' });
       return;
     }
 
     try {
-      const isMember = await this.chatService.isUserInRoom(roomId, username);
+      const isMember = await this.chatService.isUserInRoom(roomId, userId);
       if (!isMember) {
-        const errorMsg = `User ${username} is not a member of room ${roomId}`;
+        const errorMsg = `User ID ${userId} (${username}) is not a member of room ${roomId}`;
         this.logger.error(errorMsg);
         socket.emit('error', {
           message: 'You are not a member of this room.',
@@ -104,8 +105,8 @@ export class ChatGateway
       }
 
       socket.join(roomId);
-      this.server.to(roomId).emit('userJoined', { username, roomId });
-      this.logger.log(`User ${username} joined room ${roomId}`);
+      this.server.to(roomId).emit('userJoined', { username, userId, roomId });
+      this.logger.log(`User ID ${userId} (${username}) joined room ${roomId}`);
 
       await this.authService.extendSessionTTL(socket.data.user.sub);
     } catch (error) {
@@ -120,10 +121,11 @@ export class ChatGateway
   @SubscribeMessage('leaveRoom')
   async handleLeaveRoom(socket: Socket, data: { roomId: string }) {
     const { roomId } = data;
+    const userId = socket.data.user.sub;
     const username = socket.data.user.username;
 
-    if (!roomId || !username) {
-      const errorMsg = 'Room ID or Username is missing.';
+    if (!roomId || !userId) {
+      const errorMsg = 'Room ID or User ID is missing.';
       this.logger.error(errorMsg);
       socket.emit('error', { message: errorMsg, code: 'INVALID_REQUEST' });
       return;
@@ -131,8 +133,8 @@ export class ChatGateway
 
     try {
       socket.leave(roomId);
-      this.server.to(roomId).emit('userLeft', { username, roomId });
-      this.logger.log(`User ${username} left room ${roomId}`);
+      this.server.to(roomId).emit('userLeft', { username, userId, roomId });
+      this.logger.log(`User ID ${userId} (${username}) left room ${roomId}`);
 
       await this.authService.extendSessionTTL(socket.data.user.sub);
     } catch (error) {
@@ -150,10 +152,11 @@ export class ChatGateway
     data: { roomId: string; content: string },
   ) {
     const { roomId, content } = data;
+    const userId = socket.data.user.sub;
     const username = socket.data.user.username;
 
-    if (!roomId || !username || !content) {
-      const errorMsg = 'Room ID, Username or Message content is missing.';
+    if (!roomId || !userId || !content) {
+      const errorMsg = 'Room ID, User ID or Message content is missing.';
       this.logger.error(errorMsg);
       await socket.emit('error', {
         message: errorMsg,
@@ -194,9 +197,9 @@ export class ChatGateway
     }
 
     try {
-      const isMember = await this.chatService.isUserInRoom(roomId, username);
+      const isMember = await this.chatService.isUserInRoom(roomId, userId);
       if (!isMember) {
-        const errorMsg = `User ${username} is not a member of room ${roomId}`;
+        const errorMsg = `User ID ${userId} (${username}) is not a member of room ${roomId}`;
         this.logger.error(errorMsg);
         await socket.emit('error', {
           message: 'You are not a member of this room.',
@@ -213,7 +216,7 @@ export class ChatGateway
       const message = await this.chatService.addMessage(
         roomId,
         sanitizedContent,
-        username,
+        userId,
       );
 
       if (!message) {
@@ -229,10 +232,12 @@ export class ChatGateway
 
       await this.authService.extendSessionTTL(socket.data.user.sub);
 
-      this.logger.log(`Message sent by ${username} in room ${roomId}`);
+      this.logger.log(
+        `Message sent by User ID ${userId} (${username}) in room ${roomId}`,
+      );
     } catch (error) {
       this.logger.error(
-        `Failed to save message from ${username} in room ${roomId}: ${error.message}`,
+        `Failed to save message from User ID ${userId} (${username}) in room ${roomId}: ${error.message}`,
       );
       await socket.emit('error', {
         message: 'Failed to send message.',
@@ -247,8 +252,8 @@ export class ChatGateway
     data: { roomId: string; messageId: string },
   ) {
     const { roomId, messageId } = data;
-    const username = socket.data.user.username;
     const userId = socket.data.user.sub;
+    const username = socket.data.user.username;
 
     if (!roomId || !messageId) {
       const errorMsg = 'Room ID or Message ID is missing.';
@@ -258,9 +263,9 @@ export class ChatGateway
     }
 
     try {
-      const isMember = await this.chatService.isUserInRoom(roomId, username);
+      const isMember = await this.chatService.isUserInRoom(roomId, userId);
       if (!isMember) {
-        const errorMsg = `User ${username} is not a member of room ${roomId}`;
+        const errorMsg = `User ID ${userId} (${username}) is not a member of room ${roomId}`;
         this.logger.error(errorMsg);
         socket.emit('error', {
           message: 'You are not a member of this room.',
@@ -280,7 +285,7 @@ export class ChatGateway
       this.server.to(roomId).emit('messagesUpdated', updatedMessages);
 
       this.logger.log(
-        `Message ${messageId} deleted by user ID ${userId} (${username}) in room ${roomId}`,
+        `Message ${messageId} deleted by User ID ${userId} (${username}) in room ${roomId}`,
       );
     } catch (error) {
       this.logger.error(
@@ -307,6 +312,7 @@ export class ChatGateway
   @SubscribeMessage('getRoomMembers')
   async handleGetRoomMembers(socket: Socket, data: { roomId: string }) {
     const { roomId } = data;
+    const userId = socket.data.user.sub;
     const username = socket.data.user.username;
 
     if (!roomId) {
@@ -317,9 +323,9 @@ export class ChatGateway
     }
 
     try {
-      const isMember = await this.chatService.isUserInRoom(roomId, username);
+      const isMember = await this.chatService.isUserInRoom(roomId, userId);
       if (!isMember) {
-        const errorMsg = `User ${username} is not a member of room ${roomId}`;
+        const errorMsg = `User ID ${userId} (${username}) is not a member of room ${roomId}`;
         this.logger.error(errorMsg);
         socket.emit('error', {
           message: 'You are not a member of this room.',
@@ -332,7 +338,7 @@ export class ChatGateway
       socket.emit('roomMembers', { roomId, members });
 
       this.logger.log(
-        `Room members retrieved for room ${roomId} by ${username}`,
+        `Room members retrieved for room ${roomId} by User ID ${userId} (${username})`,
       );
     } catch (error) {
       this.logger.error(
