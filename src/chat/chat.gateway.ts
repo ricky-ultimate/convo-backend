@@ -248,6 +248,7 @@ export class ChatGateway
   ) {
     const { roomId, messageId } = data;
     const username = socket.data.user.username;
+    const userId = socket.data.user.sub;
 
     if (!roomId || !messageId) {
       const errorMsg = 'Room ID or Message ID is missing.';
@@ -268,22 +269,38 @@ export class ChatGateway
         return;
       }
 
-      await this.chatService.deleteMessage(messageId, roomId);
+      await this.chatService.deleteMessage(messageId, roomId, userId);
 
-      const updatedMessages = await this.chatService.getMessages(roomId);
+      const updatedMessages = await this.chatService.getMessages(
+        roomId,
+        1,
+        50,
+        userId,
+      );
       this.server.to(roomId).emit('messagesUpdated', updatedMessages);
 
       this.logger.log(
-        `Message ${messageId} deleted by ${username} in room ${roomId}`,
+        `Message ${messageId} deleted by user ID ${userId} (${username}) in room ${roomId}`,
       );
     } catch (error) {
       this.logger.error(
         `Failed to delete message in room ${roomId}: ${error.message}`,
       );
-      socket.emit('error', {
-        message: 'Failed to delete message.',
-        code: 'SERVER_ERROR',
-      });
+
+      if (
+        error.message.includes('ownership') ||
+        error.message.includes('not authorized')
+      ) {
+        socket.emit('error', {
+          message: 'You can only delete your own messages.',
+          code: 'UNAUTHORIZED',
+        });
+      } else {
+        socket.emit('error', {
+          message: 'Failed to delete message.',
+          code: 'SERVER_ERROR',
+        });
+      }
     }
   }
 

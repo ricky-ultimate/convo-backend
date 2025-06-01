@@ -10,6 +10,7 @@ import {
   BadRequestException,
   Param,
   Query,
+  Delete,
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -20,6 +21,7 @@ import { JoinRoomDto } from './dto/join-room.dto';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   ApiCreateRoom,
+  ApiDeleteMessage,
   ApiGetMessages,
   ApiGetRoomInfo,
   ApiGetRoomMembers,
@@ -139,7 +141,13 @@ export class ChatController {
         throw new UnauthorizedException('You are not a member of this room');
       }
 
-      return await this.chatService.getMessages(roomId, pageNum, limitNum);
+      // Pass the user ID to the service method
+      return await this.chatService.getMessages(
+        roomId,
+        pageNum,
+        limitNum,
+        user.id,
+      );
     } catch (error) {
       if (
         error instanceof UnauthorizedException ||
@@ -280,6 +288,41 @@ export class ChatController {
         throw error;
       }
       throw new InternalServerErrorException('Failed to retrieve room info');
+    }
+  }
+
+  @ApiDeleteMessage()
+  @UseGuards(JwtAuthGuard)
+  @Delete('room/:roomId/message/:messageId')
+  async deleteMessage(
+    @Param('roomId') roomId: string,
+    @Param('messageId') messageId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const userId = request.user.id;
+    const username = request.user.username;
+
+    if (!roomId || !messageId) {
+      throw new BadRequestException('Room ID and Message ID are required');
+    }
+
+    try {
+      const isMember = await this.chatService.isUserInRoom(roomId, username);
+      if (!isMember) {
+        throw new UnauthorizedException('You are not a member of this room');
+      }
+
+      await this.chatService.deleteMessage(messageId, roomId, userId);
+
+      return { message: 'Message deleted successfully' };
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to delete message');
     }
   }
 }
