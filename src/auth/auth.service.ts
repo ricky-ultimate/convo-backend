@@ -35,7 +35,7 @@ export class AuthService {
       this.logger.warn(`Failed to store session in Redis for user ${user.id}`);
     }
 
-    return { access_token: token };
+    return token;
   }
 
   async extendSessionTTL(userId: string): Promise<void> {

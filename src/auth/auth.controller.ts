@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Req, UseGuards, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthenticatedRequest } from './types';
@@ -29,9 +29,13 @@ export class AuthController {
     const { email, password } = loginDto;
     const user = await this.authService.validateUser(email, password);
     if (!user) {
-      return { error: 'Invalid credentials' };
+      throw new UnauthorizedException('Invalid credentials');
     }
-    return this.authService.login(user);
+    const token = await this.authService.login(user);
+    return {
+      access_token: token,
+      user: { id: user.id, email: user.email, username: user.username },
+    };
   }
 
   @ApiLogout()

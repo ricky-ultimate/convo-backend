@@ -43,25 +43,29 @@ export const ApiLogin = () =>
             example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
             description: 'JWT access token',
           },
+          user: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              email: { type: 'string', format: 'email' },
+              username: { type: 'string' },
+            },
+          },
         },
       },
     }),
     ApiResponse({
-      status: 200,
+      status: 401,
       description: 'Invalid credentials',
       schema: {
         type: 'object',
         properties: {
-          error: {
-            type: 'string',
-            example: 'Invalid credentials',
-          },
+          error: { type: 'string', example: 'Invalid credentials' },
         },
       },
     }),
     ApiStandardResponses(),
   );
-
 export const ApiLogout = () =>
   applyDecorators(
     ApiOperation({
@@ -74,10 +78,7 @@ export const ApiLogout = () =>
       schema: {
         type: 'object',
         properties: {
-          message: {
-            type: 'string',
-            example: 'Logged out successfully',
-          },
+          message: { type: 'string', example: 'Logged out successfully' },
         },
       },
     }),
