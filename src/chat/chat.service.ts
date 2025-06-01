@@ -13,9 +13,7 @@ export class ChatService {
 
   async createChatRoom(name: string) {
     try {
-      return await this.prisma.chatRoom.create({
-        data: { name: name.trim() },
-      });
+      return await this.prisma.chatRoom.create({ data: { name: name.trim() } });
     } catch (error) {
       if (error.code === 'P2002') {
         throw new BadRequestException('Room name already exists');
@@ -82,14 +80,7 @@ export class ChatService {
           userId: user.id,
           chatRoomId: chatRoom.id,
         },
-        include: {
-          user: {
-            select: {
-              username: true,
-              id: true,
-            },
-          },
-        },
+        include: { user: { select: { username: true, id: true } } },
       });
 
       return newMessage;
@@ -103,10 +94,7 @@ export class ChatService {
     const messagesToCache = updatedMessages.slice(-50);
     await this.cacheMessages(roomId, messagesToCache);
 
-    return {
-      ...message,
-      user: { username: user.username },
-    };
+    return { ...message, user: { username: user.username } };
   }
 
   async getMessages(roomId: string, page = 1, limit = 50) {
@@ -131,14 +119,7 @@ export class ChatService {
 
     const messages = await this.prisma.message.findMany({
       where: { chatRoomId: chatRoom.id },
-      include: {
-        user: {
-          select: {
-            username: true,
-            id: true,
-          },
-        },
-      },
+      include: { user: { select: { username: true, id: true } } },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
@@ -157,7 +138,7 @@ export class ChatService {
     }));
   }
 
-  async deleteMessage(messageId: string, roomId: string) {
+  async deleteMessage(messageId: string, roomId: string, userId?: string) {
     const chatRoom = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
     });
@@ -169,7 +150,7 @@ export class ChatService {
     await this.prisma.$transaction(async (tx) => {
       const message = await tx.message.findUnique({
         where: { id: messageId },
-        include: { user: true },
+        include: { user: { select: { id: true, username: true } } },
       });
 
       if (!message) {
@@ -180,9 +161,20 @@ export class ChatService {
         throw new BadRequestException('Message does not belong to this room');
       }
 
-      await tx.message.delete({
-        where: { id: messageId },
-      });
+      if (userId && message.userId !== userId) {
+        this.logger.warn(
+          `Unauthorized deletion attempt: User ID ${userId} tried to delete message owned by ${message.userId}`,
+        );
+        throw new BadRequestException(
+          'You are not authorized to delete this message. You can only delete your own messages.',
+        );
+      }
+
+      await tx.message.delete({ where: { id: messageId } });
+
+      this.logger.log(
+        `Message ${messageId} deleted by owner (User ID: ${message.userId}) in room: ${roomId}`,
+      );
     });
 
     const cacheKey = `chat:room:${roomId}:messages`;
@@ -203,10 +195,7 @@ export class ChatService {
     }
 
     const membership = await this.prisma.chatRoomMembership.findFirst({
-      where: {
-        chatRoomId: chatRoom.id,
-        user: { username },
-      },
+      where: { chatRoomId: chatRoom.id, user: { username } },
     });
     return !!membership;
   }
@@ -226,10 +215,7 @@ export class ChatService {
     }
 
     const existingMembership = await this.prisma.chatRoomMembership.findFirst({
-      where: {
-        chatRoomId: chatRoom.id,
-        userId: user.id,
-      },
+      where: { chatRoomId: chatRoom.id, userId: user.id },
     });
 
     if (existingMembership) {
@@ -237,18 +223,9 @@ export class ChatService {
     }
 
     const membership = await this.prisma.chatRoomMembership.create({
-      data: {
-        chatRoomId: chatRoom.id,
-        userId: user.id,
-      },
+      data: { chatRoomId: chatRoom.id, userId: user.id },
       include: {
-        chatRoom: {
-          select: {
-            id: true,
-            name: true,
-            createdAt: true,
-          },
-        },
+        chatRoom: { select: { id: true, name: true, createdAt: true } },
       },
     });
 
@@ -256,10 +233,7 @@ export class ChatService {
       `User ${username} joined room ${chatRoom.name} (ID: ${roomId})`,
     );
 
-    return {
-      message: 'Successfully joined room',
-      room: membership.chatRoom,
-    };
+    return { message: 'Successfully joined room', room: membership.chatRoom };
   }
 
   async getUserRooms(username: string) {
@@ -270,27 +244,18 @@ export class ChatService {
     }
 
     const memberships = await this.prisma.chatRoomMembership.findMany({
-      where: {
-        userId: user.id,
-      },
+      where: { userId: user.id },
       include: {
         chatRoom: {
           select: {
             id: true,
             name: true,
             createdAt: true,
-            _count: {
-              select: {
-                messages: true,
-                memberships: true,
-              },
-            },
+            _count: { select: { messages: true, memberships: true } },
           },
         },
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
 
     return memberships.map((membership) => ({
@@ -318,10 +283,7 @@ export class ChatService {
     }
 
     const membership = await this.prisma.chatRoomMembership.findFirst({
-      where: {
-        chatRoomId: chatRoom.id,
-        userId: user.id,
-      },
+      where: { chatRoomId: chatRoom.id, userId: user.id },
     });
 
     if (!membership) {
@@ -329,18 +291,14 @@ export class ChatService {
     }
 
     await this.prisma.chatRoomMembership.delete({
-      where: {
-        id: membership.id,
-      },
+      where: { id: membership.id },
     });
 
     this.logger.log(
       `User ${username} left room ${chatRoom.name} (ID: ${roomId})`,
     );
 
-    return {
-      message: 'Successfully left room',
-    };
+    return { message: 'Successfully left room' };
   }
 
   async getRoomMembers(roomId: string) {
@@ -353,20 +311,9 @@ export class ChatService {
     }
 
     const memberships = await this.prisma.chatRoomMembership.findMany({
-      where: {
-        chatRoomId: chatRoom.id,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            username: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
+      where: { chatRoomId: chatRoom.id },
+      include: { user: { select: { id: true, username: true } } },
+      orderBy: { createdAt: 'asc' },
     });
 
     return memberships.map((membership) => ({
@@ -382,12 +329,7 @@ export class ChatService {
         id: true,
         name: true,
         createdAt: true,
-        _count: {
-          select: {
-            messages: true,
-            memberships: true,
-          },
-        },
+        _count: { select: { messages: true, memberships: true } },
       },
     });
 
