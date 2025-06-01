@@ -141,7 +141,13 @@ export class ChatController {
         throw new UnauthorizedException('You are not a member of this room');
       }
 
-      return await this.chatService.getMessages(roomId, pageNum, limitNum);
+      // Pass the user ID to the service method
+      return await this.chatService.getMessages(
+        roomId,
+        pageNum,
+        limitNum,
+        user.id,
+      );
     } catch (error) {
       if (
         error instanceof UnauthorizedException ||

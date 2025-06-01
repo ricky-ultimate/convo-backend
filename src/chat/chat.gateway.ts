@@ -271,7 +271,12 @@ export class ChatGateway
 
       await this.chatService.deleteMessage(messageId, roomId, userId);
 
-      const updatedMessages = await this.chatService.getMessages(roomId);
+      const updatedMessages = await this.chatService.getMessages(
+        roomId,
+        1,
+        50,
+        userId,
+      );
       this.server.to(roomId).emit('messagesUpdated', updatedMessages);
 
       this.logger.log(

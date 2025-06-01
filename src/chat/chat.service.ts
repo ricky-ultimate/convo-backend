@@ -101,7 +101,7 @@ export class ChatService {
     roomId: string,
     page = 1,
     limit = 50,
-    requestingUserId?: string,
+    requestingUserId: string,
   ) {
     const chatRoom = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
@@ -117,7 +117,7 @@ export class ChatService {
         this.logger.log(`Returning cached messages for room: ${roomId}`);
         return cachedMessages.map((message) => ({
           ...message,
-          user: { username: message.user?.username || 'Anonymous' },
+          user: { username: message.user.username },
           canDelete: requestingUserId
             ? message.userId === requestingUserId
             : false,
