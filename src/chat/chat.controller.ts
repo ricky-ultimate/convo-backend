@@ -14,7 +14,7 @@ import {
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthenticatedRequest } from '../auth/types';
-import { CreateRoomDto } from './dto/create-message.dto';
+import { CreateRoomDto } from './dto/create-room.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { JoinRoomDto } from './dto/join-room.dto';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
