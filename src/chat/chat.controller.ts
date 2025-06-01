@@ -21,6 +21,7 @@ import { JoinRoomDto } from './dto/join-room.dto';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import {
   ApiCreateRoom,
+  ApiDeleteMessage,
   ApiGetMessages,
   ApiGetRoomInfo,
   ApiGetRoomMembers,
@@ -284,6 +285,7 @@ export class ChatController {
     }
   }
 
+  @ApiDeleteMessage()
   @UseGuards(JwtAuthGuard)
   @Delete('room/:roomId/message/:messageId')
   async deleteMessage(
