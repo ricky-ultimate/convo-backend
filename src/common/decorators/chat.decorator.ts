@@ -102,9 +102,7 @@ export const ApiGetMessages = () =>
             createdAt: { type: 'string', format: 'date-time' },
             user: {
               type: 'object',
-              properties: {
-                username: { type: 'string' },
-              },
+              properties: { username: { type: 'string' } },
             },
           },
         },
@@ -249,6 +247,70 @@ export const ApiGetRoomInfo = () =>
           createdAt: { type: 'string', format: 'date-time' },
           messageCount: { type: 'number' },
           memberCount: { type: 'number' },
+        },
+      },
+    }),
+    ApiStandardResponses(),
+    ApiAuthRequired(),
+  );
+
+export const ApiDeleteMessage = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: 'Delete a message from a chat room',
+      description:
+        'Delete a specific message from a chat room. Users can only delete their own messages.',
+    }),
+    ApiParam({
+      name: 'roomId',
+      type: 'string',
+      format: 'uuid',
+      description: 'Chat room ID',
+      example: 'uuid-here',
+    }),
+    ApiParam({
+      name: 'messageId',
+      type: 'string',
+      format: 'uuid',
+      description: 'Message ID to delete',
+      example: 'uuid-here',
+    }),
+    ApiResponse({
+      status: 200,
+      description: 'Message deleted successfully',
+      schema: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', example: 'Message deleted successfully' },
+        },
+      },
+    }),
+    ApiResponse({
+      status: 401,
+      description:
+        'Unauthorized - User not authenticated or not authorized to delete this message',
+      schema: {
+        type: 'object',
+        properties: {
+          statusCode: { type: 'number', example: 401 },
+          message: {
+            type: 'string',
+            example:
+              'You are not authorized to delete this message. You can only delete your own messages.',
+          },
+          error: { type: 'string', example: 'Unauthorized' },
+        },
+      },
+    }),
+    ApiResponse({
+      status: 404,
+      description: 'Message or room not found',
+      schema: {
+        type: 'object',
+        properties: {
+          statusCode: { type: 'number', example: 404 },
+          message: { type: 'string', example: 'Message not found' },
+          error: { type: 'string', example: 'Not Found' },
         },
       },
     }),
