@@ -97,7 +97,12 @@ export class ChatService {
     return { ...message, user: { username: user.username } };
   }
 
-  async getMessages(roomId: string, page = 1, limit = 50) {
+  async getMessages(
+    roomId: string,
+    page = 1,
+    limit = 50,
+    requestingUserId?: string,
+  ) {
     const chatRoom = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
     });
@@ -113,6 +118,9 @@ export class ChatService {
         return cachedMessages.map((message) => ({
           ...message,
           user: { username: message.user?.username || 'Anonymous' },
+          canDelete: requestingUserId
+            ? message.userId === requestingUserId
+            : false,
         }));
       }
     }
@@ -135,6 +143,7 @@ export class ChatService {
     return reversedMessages.map((message) => ({
       ...message,
       user: { username: message.user.username },
+      canDelete: requestingUserId ? message.userId === requestingUserId : false,
     }));
   }
 
