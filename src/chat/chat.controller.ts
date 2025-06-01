@@ -57,7 +57,7 @@ export class ChatController {
 
     try {
       const room = await this.chatService.createChatRoom(name.trim());
-      await this.chatService.joinRoom(room.id, request.user.username);
+      await this.chatService.joinRoom(room.id, request.user.id);
       return room;
     } catch (error) {
       if (error.code === 'P2002') {
@@ -76,7 +76,7 @@ export class ChatController {
     @Req() request: AuthenticatedRequest,
   ) {
     const { content } = sendMessageDto;
-    const username = request.user.username;
+    const userId = request.user.id;
 
     if (!roomId || !content) {
       throw new BadRequestException('Room ID and content are required');
@@ -89,16 +89,12 @@ export class ChatController {
     }
 
     try {
-      const isMember = await this.chatService.isUserInRoom(roomId, username);
+      const isMember = await this.chatService.isUserInRoom(roomId, userId);
       if (!isMember) {
         throw new UnauthorizedException('You are not a member of this room');
       }
 
-      return await this.chatService.addMessage(
-        roomId,
-        content.trim(),
-        username,
-      );
+      return await this.chatService.addMessage(roomId, content.trim(), userId);
     } catch (error) {
       if (
         error instanceof UnauthorizedException ||
@@ -133,15 +129,11 @@ export class ChatController {
     }
 
     try {
-      const isMember = await this.chatService.isUserInRoom(
-        roomId,
-        user.username,
-      );
+      const isMember = await this.chatService.isUserInRoom(roomId, user.id);
       if (!isMember) {
         throw new UnauthorizedException('You are not a member of this room');
       }
 
-      // Pass the user ID to the service method
       return await this.chatService.getMessages(
         roomId,
         pageNum,
@@ -168,7 +160,7 @@ export class ChatController {
     @Body() joinRoomDto: JoinRoomDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    const username = request.user.username;
+    const userId = request.user.id;
     const { roomId } = joinRoomDto;
 
     if (!roomId) {
@@ -176,7 +168,7 @@ export class ChatController {
     }
 
     try {
-      return await this.chatService.joinRoom(roomId, username);
+      return await this.chatService.joinRoom(roomId, userId);
     } catch (error) {
       if (error.message.includes('not found')) {
         throw new BadRequestException('Room not found');
@@ -195,14 +187,14 @@ export class ChatController {
     @Param('roomId') roomId: string,
     @Req() request: AuthenticatedRequest,
   ) {
-    const username = request.user.username;
+    const userId = request.user.id;
 
     if (!roomId) {
       throw new BadRequestException('Room ID is required');
     }
 
     try {
-      return await this.chatService.leaveRoom(roomId, username);
+      return await this.chatService.leaveRoom(roomId, userId);
     } catch (error) {
       if (error.message.includes('not found')) {
         throw new BadRequestException('Room not found');
@@ -228,7 +220,7 @@ export class ChatController {
     try {
       const isMember = await this.chatService.isUserInRoom(
         roomId,
-        request.user.username,
+        request.user.id,
       );
       if (!isMember) {
         throw new UnauthorizedException('You are not a member of this room');
@@ -250,10 +242,10 @@ export class ChatController {
   @UseGuards(JwtAuthGuard)
   @Get('rooms')
   async getUserRooms(@Req() request: AuthenticatedRequest) {
-    const username = request.user.username;
+    const userId = request.user.id;
 
     try {
-      return await this.chatService.getUserRooms(username);
+      return await this.chatService.getUserRooms(userId);
     } catch (error) {
       throw new InternalServerErrorException('Failed to retrieve rooms');
     }
@@ -273,7 +265,7 @@ export class ChatController {
     try {
       const isMember = await this.chatService.isUserInRoom(
         roomId,
-        request.user.username,
+        request.user.id,
       );
       if (!isMember) {
         throw new UnauthorizedException('You are not a member of this room');
@@ -300,14 +292,13 @@ export class ChatController {
     @Req() request: AuthenticatedRequest,
   ) {
     const userId = request.user.id;
-    const username = request.user.username;
 
     if (!roomId || !messageId) {
       throw new BadRequestException('Room ID and Message ID are required');
     }
 
     try {
-      const isMember = await this.chatService.isUserInRoom(roomId, username);
+      const isMember = await this.chatService.isUserInRoom(roomId, userId);
       if (!isMember) {
         throw new UnauthorizedException('You are not a member of this room');
       }
