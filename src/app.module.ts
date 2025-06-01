@@ -3,7 +3,6 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
-import { AuthController } from './auth/auth.controller';
 import { ChatService } from './chat/chat.service';
 import { ChatModule } from './chat/chat.module';
 import { RedisModule } from './redis/redis.module';
@@ -17,7 +16,7 @@ import { ConfigModule } from '@nestjs/config';
     RedisModule,
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
   ],
-  controllers: [AppController, AuthController],
+  controllers: [AppController],
   providers: [AppService, ChatService],
 })
 export class AppModule {}
