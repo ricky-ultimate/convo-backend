@@ -105,7 +105,8 @@ export class AuthService {
         },
       });
 
-      return this.login(user);
+      const token = await this.login(user);
+      return { token, user };
     } catch (error) {
       this.logger.error(`Registration failed: ${error.message}`);
       throw new UnauthorizedException('Registration failed');

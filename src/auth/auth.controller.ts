@@ -1,4 +1,11 @@
-import { Controller, Post, Body, Req, UseGuards, UnauthorizedException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Req,
+  UseGuards,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthenticatedRequest } from './types';
@@ -20,7 +27,16 @@ export class AuthController {
   @Post('register')
   async register(@Body() registerDto: RegisterDto) {
     const { email, username, password } = registerDto;
-    return this.authService.register(email, username, password);
+    const { token, user } = await this.authService.register(
+      email,
+      username,
+      password,
+    );
+
+    return {
+      access_token: token,
+      user: { id: user.id, email: user.email, username: user.username },
+    };
   }
 
   @ApiLogin()
